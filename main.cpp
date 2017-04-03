@@ -12,12 +12,17 @@ vec3 eyePoint = vec3( 0.0, 0.0, -30.0 );
 vec3 eyeDirection = vec3(0.0, 0.0, 1.0);
 vec3 up = vec3( .0, 1.0, .0 );
 
+
 //motion model
-// float t = 0, dt = 0.05;
-// vec3 g = vec3(0.f, -9.8, 0.f);
-// vec3 force;
-// vec3 a[3][5];
-// vec3 v[3][5];
+float dt = 0.01;
+vec3 g = vec3(0.f, -9.8, 0.f);
+float airFrictionConstant = 0.3;
+
+vec3 vel[3][5];
+
+float springLength = 6;
+float springConstant = 200;
+
 
 
 GLFWwindow* window;
@@ -35,7 +40,10 @@ void keyCallback(
             }
 
             case GLFW_KEY_A: {
-                //force = vec3(-1.f,0.f,0.f);
+                for(int i = 0; i < 3; ++i)
+                for(int j = 0; j < 5; ++j){
+                    vel[i][j]+=vec3(5.f,0.f,0.f);
+                }
             }
         }
     }
@@ -89,12 +97,12 @@ int GLinit(){
 //moadel data
 GLuint vbo[5], vbo0n;
 GLuint vao;
-GLuint curve[3];
+GLuint curve[3], color[3];
 
 vec3 tri0[3], tri0n[3];
 vec3 curVtx[3][50];
 int numPoint = 5;
-vector< vec3 > line0, line1, line2;
+vector<vec3> line[3];
 vec3 *line_pt[3] = {0};
 
 
@@ -140,40 +148,24 @@ int createModel()
 
     for(float i = 0; i < numPoint; i++){
         srand(i);
-        line0.push_back( tri0[0] + tri0n[0] * float(5.0) * i + vec3(rand()%3-3, 0, 0) * (float)(i != 0));
-        line1.push_back( tri0[1] + tri0n[1] * float(5.0) * i + vec3(rand()%3-3, 0, 0) * (float)(i != 0));
-        line2.push_back( tri0[2] + tri0n[2] * float(5.0) * i + vec3(rand()%3-3, 0, 0) * (float)(i != 0));
+        line[0].push_back( tri0[0] + tri0n[0] * float(5.0) * i );
+        line[1].push_back( tri0[1] + tri0n[1] * float(5.0) * i );
+        line[2].push_back( tri0[2] + tri0n[2] * float(5.0) * i );
 
     }
 
-    line_pt[0] = &(*line0.begin());
-    line_pt[1] = &(*line1.begin());
-    line_pt[2] = &(*line2.begin());
+    line_pt[0] = &(*line[0].begin());
+    line_pt[1] = &(*line[1].begin());
+    line_pt[2] = &(*line[2].begin());
     //line vbo 1,2,3
     for(int i = 1; i < 4; i++){
-        glGenBuffers( 1, &vbo[i] );
+        glGenBuffers( 1, &vbo[i] );//vbo 1,2,3
+        glGenBuffers( 1, &curve[i-1] );//cureve 0,1,2
         glBindBuffer( GL_ARRAY_BUFFER, vbo[i] );
         glBufferData( GL_ARRAY_BUFFER,
             sizeof( float ) * numPoint * 3,
             line_pt[i-1], GL_STATIC_DRAW
         );
-    //curve 0,1,2
-    calcBezier(line0, 0);
-    calcBezier(line1, 1);
-    calcBezier(line2, 2);
-    for(int i= 0; i < 3; i++ ){
-
-        glGenBuffers( 1, &curve[i] );
-        glBindBuffer( GL_ARRAY_BUFFER, curve[i] );
-        glBufferData( GL_ARRAY_BUFFER,
-            sizeof( float ) * 50 * 3,
-            curVtx[i], GL_STATIC_DRAW
-        );
-
-
-    }
-
-
 
     }
     return 0;
@@ -227,19 +219,30 @@ int main()
         glVertexAttribPointer( 0, 3, GL_FLOAT, GL_FALSE, 0, 0 );
         glDrawArrays(GL_LINE_LOOP, 0, 3);
 
+
         for(int i = 0; i < 3; i++){
+            //control point
             glBindBuffer( GL_ARRAY_BUFFER, vbo[i+1] );
+            glBufferData( GL_ARRAY_BUFFER,
+                sizeof( float ) * numPoint * 3,
+                line_pt[i], GL_STATIC_DRAW
+            );
             glVertexAttribPointer( 0, 3, GL_FLOAT, GL_FALSE, 0, 0 );
             glDrawArrays(GL_LINE_STRIP, 0, 5);
 
+            calcBezier(line[i], i);
             glBindBuffer( GL_ARRAY_BUFFER, curve[i] );
+            glBufferData( GL_ARRAY_BUFFER,
+                sizeof( float ) * 50 * 3,
+                curVtx[i], GL_STATIC_DRAW
+            );
             glVertexAttribPointer( 0, 3, GL_FLOAT, GL_FALSE, 0, 0 );
             glDrawArrays(GL_LINE_STRIP, 0, 50);
 
 
         }
 
-        //update();
+        update();
         /* Swap front and back buffers */
         glfwSwapBuffers(window);
 
@@ -253,6 +256,28 @@ int main()
 
 void update()
 {
+    for(int i = 0; i < 3; ++i)
+        for(int j = 0; j < numPoint-1; ++j){
+            vec3 springVector = line_pt[i][j] - line_pt[i][j+1];
+            float r = springVector.length();
+
+            vec3 force;
+            if( r != 0 ){
+                force = (springVector / r) * (r - springLength) * springConstant
+                        +g;
+
+            }
+            force += -(vel[i][j] - vel[i][j+1])*airFrictionConstant;
+            //cout<<springVector.x<<' '<<springVector.y<<endl;
+            vel[i][j] += force * dt;
+            if(j!=0)
+                *(line_pt[i]+j) += vec3(vel[i][j].x * dt,0.f,0.f);
+            //cout<<vel[i][j].x*dt<<' '<<vel[i][j].y*dt<<endl;
+            vel[i][j+1] += -force  * dt;
+            //*(line_pt[i]+j+1) += vel[i][j+1]*dt;
+            *(line_pt[i]+j+1) += vec3(vel[i][j+1].x * dt,0.f,0.f);
+
+        }
 
 
 }
