@@ -21,7 +21,7 @@ float airFrictionConstant = 0.3;
 vec3 vel[3][5];
 
 float springLength = 6;
-float springConstant = 200;
+float springConstant = 400;
 
 
 
@@ -44,6 +44,39 @@ void keyCallback(
                 for(int j = 0; j < 5; ++j){
                     vel[i][j]+=vec3(5.f,0.f,0.f);
                 }
+                break;
+            }
+
+            case GLFW_KEY_D: {
+                for(int i = 0; i < 3; ++i)
+                for(int j = 0; j < 5; ++j){
+                    vel[i][j]+=vec3(-5.f,0.f,0.f);
+                }
+                break;
+            }
+
+            case GLFW_KEY_S: {
+                for(int i = 0; i < 3; ++i)
+                for(int j = 0; j < 5; ++j){
+                    vel[i][j]+=vec3(0.f,0.f,-5.f);
+                }
+                break;
+            }
+
+            case GLFW_KEY_W: {
+                for(int i = 0; i < 3; ++i)
+                for(int j = 0; j < 5; ++j){
+                    vel[i][j]+=vec3(0.f,0.f,5.f);
+                }
+                break;
+            }
+
+            case GLFW_KEY_P: {
+                for(int i = 0; i < 3; ++i)
+                for(int j = 0; j < 5; ++j){
+                    vel[i][j] = vec3(0.f,0.f,0.f);
+                }
+                break;
             }
         }
     }
@@ -97,24 +130,29 @@ int GLinit(){
 //moadel data
 GLuint vbo[5], vbo0n;
 GLuint vao;
-GLuint curve[3], color[3];
 
 vec3 tri0[3], tri0n[3];
-vec3 curVtx[3][50];
 int numPoint = 5;
 vector<vec3> line[3];
 vec3 *line_pt[3] = {0};
 
+//itp model
+const int itpnum = 100;
+GLuint itpid[itpnum];
+vec3 itpv[itpnum][5];
+float a[itpnum], b[itpnum], c[itpnum];
+GLuint curve[itpnum];
+vec3 curVtx[itpnum][50];
 
-void calcBezier(vector< vec3 > &line, int num)
+
+void calcBezier(vec3 *line, int num)
 {
-    vector<vec3 >::iterator iter = line.begin();
     for(int i = 0; i < 50; i++){
         float t = i/50.0;
-        curVtx[num][i] = *iter * (float)pow(1-t,3)
-                        + *(iter+1) * t * (float)pow(1-t,2) * 3.f
-                        + *(iter+2) * (float)pow(t,2) * (1-t) * 3.f
-                        + *(iter+4) * (float)pow(t,3);
+        curVtx[num][i] = *line * (float)pow(1-t,3)
+                        + *(line+1) * t * (float)pow(1-t,2) * 3.f
+                        + *(line+2) * (float)pow(t,2) * (1-t) * 3.f
+                        + *(line+4) * (float)pow(t,3);
     }
 
 }
@@ -148,9 +186,9 @@ int createModel()
 
     for(float i = 0; i < numPoint; i++){
         srand(i);
-        line[0].push_back( tri0[0] + tri0n[0] * float(5.0) * i );
-        line[1].push_back( tri0[1] + tri0n[1] * float(5.0) * i );
-        line[2].push_back( tri0[2] + tri0n[2] * float(5.0) * i );
+        line[0].push_back( tri0[0] + tri0n[0] * float(10.0) * i );
+        line[1].push_back( tri0[1] + tri0n[1] * float(10.0) * i );
+        line[2].push_back( tri0[2] + tri0n[2] * float(10.0) * i );
 
     }
 
@@ -160,7 +198,7 @@ int createModel()
     //line vbo 1,2,3
     for(int i = 1; i < 4; i++){
         glGenBuffers( 1, &vbo[i] );//vbo 1,2,3
-        glGenBuffers( 1, &curve[i-1] );//cureve 0,1,2
+
         glBindBuffer( GL_ARRAY_BUFFER, vbo[i] );
         glBufferData( GL_ARRAY_BUFFER,
             sizeof( float ) * numPoint * 3,
@@ -168,11 +206,26 @@ int createModel()
         );
 
     }
+
+    for(int i = 0; i < itpnum; ++i){
+        glGenBuffers( 1, &itpid[i]);
+        glGenBuffers( 1, &curve[i] );//cureve 0,...,itpnum-1
+        //srand(i);
+        a[i] = rand()%999/1000.0;
+        b[i] = rand()%999/1000.0;
+        if (a[i]+b[i] > 1){
+            float *t;
+            a[i] > b[i] ? t = &a[i] : t = &b[i];
+            *t = 1 - *t;
+        }
+        c[i] = 1 - a[i] - b[i];
+    }
     return 0;
 
 
 
 }
+
 void shaderInit()
 {
     SHADER shader;
@@ -196,6 +249,18 @@ void shaderInit()
 
 }
 
+void interpolate()
+{
+    for(int i = 0; i < itpnum; ++i)
+        for(int j = 0; j < 5; j++){
+            itpv[i][j] = (*(line_pt[0]+j)) * a[i]
+                         +(*(line_pt[1]+j)) * b[i]
+                         +(*(line_pt[2]+j)) * c[i];
+            //cout << i<<'-'<<j<<':'<<itpv[i][j].x <<' '<<itpv[i][j].y<<endl;
+
+        }
+
+}
 int main()
 {
     GLinit();
@@ -207,6 +272,7 @@ int main()
 
     if ( createModel() == 0 ) cout << "model created sucessfully" <<endl;
 
+    interpolate();
 
     /* Loop until the user closes the window */
     while (!glfwWindowShouldClose(window))
@@ -230,7 +296,25 @@ int main()
             glVertexAttribPointer( 0, 3, GL_FLOAT, GL_FALSE, 0, 0 );
             glDrawArrays(GL_LINE_STRIP, 0, 5);
 
-            calcBezier(line[i], i);
+        }
+
+        interpolate();
+
+
+
+        for(int i = 0; i < itpnum; i++){
+            glBindBuffer( GL_ARRAY_BUFFER, itpid[i] );
+            glBufferData( GL_ARRAY_BUFFER,
+                sizeof( float ) * 5 * 3,
+                itpv[i], GL_STATIC_DRAW
+            );
+            glVertexAttribPointer( 0, 3, GL_FLOAT, GL_FALSE, 0, 0 );
+            glDrawArrays(GL_LINE_STRIP, 0, 5);
+        }
+
+        //Bezier
+        for(int i = 0; i < itpnum; i++){
+            calcBezier(itpv[i], i);
             glBindBuffer( GL_ARRAY_BUFFER, curve[i] );
             glBufferData( GL_ARRAY_BUFFER,
                 sizeof( float ) * 50 * 3,
@@ -238,8 +322,6 @@ int main()
             );
             glVertexAttribPointer( 0, 3, GL_FLOAT, GL_FALSE, 0, 0 );
             glDrawArrays(GL_LINE_STRIP, 0, 50);
-
-
         }
 
         update();
@@ -271,11 +353,11 @@ void update()
             //cout<<springVector.x<<' '<<springVector.y<<endl;
             vel[i][j] += force * dt;
             if(j!=0)
-                *(line_pt[i]+j) += vec3(vel[i][j].x * dt,0.f,0.f);
+                *(line_pt[i]+j) += vec3(vel[i][j].x*dt,0.f,vel[i][j].z*dt);
             //cout<<vel[i][j].x*dt<<' '<<vel[i][j].y*dt<<endl;
             vel[i][j+1] += -force  * dt;
             //*(line_pt[i]+j+1) += vel[i][j+1]*dt;
-            *(line_pt[i]+j+1) += vec3(vel[i][j+1].x * dt,0.f,0.f);
+            *(line_pt[i]+j+1) += vec3(vel[i][j+1].x*dt,0.f,vel[i][j+1].z*dt);
 
         }
 
