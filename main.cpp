@@ -1,6 +1,11 @@
+//2017.4.5
+//yangshuo
+//using WASD to increase velocity of 4 direction
+
 #include "common.h"
 
 #define max(a,b) a>b?a:b
+
 void update();
 
 GLint uniform_M, uniform_V, uniform_P, uniform_mvp;
@@ -14,16 +19,15 @@ vec3 up = vec3( .0, 1.0, .0 );
 
 
 //motion model
+bool isSim = 1;
 float dt = 0.01;
-vec3 g = vec3(0.f, -9.8, 0.f);
+vec3 g = vec3(0.f, -9.8, 0.f);//gravity
 float airFrictionConstant = 0.3;
 
-vec3 vel[3][5];
+vec3 vel[3][5];//velocity of control hair
 
 float springLength = 6;
 float springConstant = 400;
-
-
 
 GLFWwindow* window;
 
@@ -72,10 +76,7 @@ void keyCallback(
             }
 
             case GLFW_KEY_P: {
-                for(int i = 0; i < 3; ++i)
-                for(int j = 0; j < 5; ++j){
-                    vel[i][j] = vec3(0.f,0.f,0.f);
-                }
+                isSim = !isSim;
                 break;
             }
         }
@@ -100,7 +101,7 @@ int GLinit(){
 	//Open a window and create its OpenGL context
 	window = glfwCreateWindow(
         WINDOW_WIDTH, WINDOW_HEIGHT,
-        "glsl",
+        "hair simulation",
         NULL, NULL
     );
 
@@ -124,26 +125,31 @@ int GLinit(){
     glfwSetKeyCallback(window, keyCallback);
 
     return 0;
-
 }
 
-//moadel data
-GLuint vbo[5], vbo0n;
+//model data
+GLuint vbo[5], vbo0n;//contatins id
 GLuint vao;
 
-vec3 tri0[3], tri0n[3];
-int numPoint = 5;
-vector<vec3> line[3];
-vec3 *line_pt[3] = {0};
+vec3 tri0[3], tri0n[3];//triangle's vertex and normal vector
+int numPoint = 5;//number of points on each control hair
+vector<vec3> line[3];//3 control hair
+vec3 *line_pt[3] = {0};//pointer to each vector
 
-//itp model
-const int itpnum = 100;
+//interpolate model
+const int itpnum = 100;//num of itp hairs
 GLuint itpid[itpnum];
 vec3 itpv[itpnum][5];
-float a[itpnum], b[itpnum], c[itpnum];
-GLuint curve[itpnum];
-vec3 curVtx[itpnum][50];
+float a[itpnum], b[itpnum], c[itpnum];//iteerpolate constant
+GLuint curve[itpnum];//id of curve, include control hair and itp hair
+vec3 curVtx[itpnum][50];//vertex data
 
+/*
+in: a pointer to a series of vec3 vertex
+num: id of line
+
+using 3-Bezier, each curve contain 50 points
+*/
 
 void calcBezier(vec3 *line, int num)
 {
@@ -159,16 +165,14 @@ void calcBezier(vec3 *line, int num)
 
 int createModel()
 {
-    //verte
-    tri0[0] = vec3(-10,10,0);
-    tri0[1] = vec3(10,10,0);
+    //vertex
+    tri0[0] = vec3(-10,15,0);
+    tri0[1] = vec3(10,15,0);
     tri0[2] = vec3(0,15,17);
     //normal
     tri0n[0] = vec3(0,-1,0);
     tri0n[1] = vec3(0,-1,0);
     tri0n[2] = vec3(0,-1,0);
-    //Bezier
-
 
     glGenBuffers( 1, &vbo[0] );
     glBindBuffer( GL_ARRAY_BUFFER, vbo[0] );
@@ -183,27 +187,27 @@ int createModel()
         sizeof( float ) * 3 * 3,
         tri0n, GL_STATIC_DRAW
     );
-
+    //calculate 5 points, all along tri0n
     for(float i = 0; i < numPoint; i++){
         srand(i);
-        line[0].push_back( tri0[0] + tri0n[0] * float(10.0) * i );
-        line[1].push_back( tri0[1] + tri0n[1] * float(10.0) * i );
-        line[2].push_back( tri0[2] + tri0n[2] * float(10.0) * i );
+        line[0].push_back( tri0[0] + tri0n[0] * float(8.0) * i );
+        line[1].push_back( tri0[1] + tri0n[1] * float(8.0) * i );
+        line[2].push_back( tri0[2] + tri0n[2] * float(8.0) * i );
 
     }
-
+    //point to the first element of vector
     line_pt[0] = &(*line[0].begin());
     line_pt[1] = &(*line[1].begin());
     line_pt[2] = &(*line[2].begin());
     //line vbo 1,2,3
     for(int i = 1; i < 4; i++){
         glGenBuffers( 1, &vbo[i] );//vbo 1,2,3
-
-        glBindBuffer( GL_ARRAY_BUFFER, vbo[i] );
-        glBufferData( GL_ARRAY_BUFFER,
-            sizeof( float ) * numPoint * 3,
-            line_pt[i-1], GL_STATIC_DRAW
-        );
+        //
+        // glBindBuffer( GL_ARRAY_BUFFER, vbo[i] );
+        // glBufferData( GL_ARRAY_BUFFER,
+        //     sizeof( float ) * numPoint * 3,
+        //     line_pt[i-1], GL_STATIC_DRAW
+        // );
 
     }
 
@@ -280,12 +284,12 @@ int main()
         /* Render here */
         glClearColor(0.f, 0.f, 0.f, 0.f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
+        //draw triangle
         glBindBuffer( GL_ARRAY_BUFFER, vbo[0] );
         glVertexAttribPointer( 0, 3, GL_FLOAT, GL_FALSE, 0, 0 );
         glDrawArrays(GL_LINE_LOOP, 0, 3);
 
-
+        //draw control line, not Bezier curve
         for(int i = 0; i < 3; i++){
             //control point
             glBindBuffer( GL_ARRAY_BUFFER, vbo[i+1] );
@@ -300,19 +304,7 @@ int main()
 
         interpolate();
 
-
-
-        for(int i = 0; i < itpnum; i++){
-            glBindBuffer( GL_ARRAY_BUFFER, itpid[i] );
-            glBufferData( GL_ARRAY_BUFFER,
-                sizeof( float ) * 5 * 3,
-                itpv[i], GL_STATIC_DRAW
-            );
-            glVertexAttribPointer( 0, 3, GL_FLOAT, GL_FALSE, 0, 0 );
-            glDrawArrays(GL_LINE_STRIP, 0, 5);
-        }
-
-        //Bezier
+        //draw itp Bezier curve
         for(int i = 0; i < itpnum; i++){
             calcBezier(itpv[i], i);
             glBindBuffer( GL_ARRAY_BUFFER, curve[i] );
@@ -336,30 +328,37 @@ int main()
     return EXIT_SUCCESS;
 }
 
+//simulation
 void update()
 {
-    for(int i = 0; i < 3; ++i)
-        for(int j = 0; j < numPoint-1; ++j){
-            vec3 springVector = line_pt[i][j] - line_pt[i][j+1];
-            float r = springVector.length();
+    //just calculate 3 control hair's physics motion
+    if( isSim ){
+        for(int i = 0; i < 3; ++i)
+            for(int j = 0; j < numPoint-1; ++j){
+                //distance r between two points
+                vec3 springVector = line_pt[i][j] - line_pt[i][j+1];
+                float r = springVector.length();
 
-            vec3 force;
-            if( r != 0 ){
-                force = (springVector / r) * (r - springLength) * springConstant
-                        +g;
+                vec3 force;
+                if( r != 0 ){
+                    force = (springVector / r) * (r - springLength) * springConstant
+                            + g;//g value  maybe is not correct
+
+                }
+                force += -(vel[i][j] - vel[i][j+1])*airFrictionConstant;
+                //cout<<springVector.x<<' '<<springVector.y<<endl;
+
+                //here assume all the points' mass is 1
+                vel[i][j] += force * dt;
+                //points on triangle don't move
+                if(j != 0)
+                    *(line_pt[i]+j) += vec3(vel[i][j].x*dt, 0.f, vel[i][j].z*dt);
+                //cout<<vel[i][j].x*dt<<' '<<vel[i][j].y*dt<<endl;
+                vel[i][j+1] += -force  * dt;
+                //*(line_pt[i]+j+1) += vel[i][j+1]*dt;
+                *(line_pt[i]+j+1) += vec3(vel[i][j+1].x*dt,0.f,vel[i][j+1].z*dt);
 
             }
-            force += -(vel[i][j] - vel[i][j+1])*airFrictionConstant;
-            //cout<<springVector.x<<' '<<springVector.y<<endl;
-            vel[i][j] += force * dt;
-            if(j!=0)
-                *(line_pt[i]+j) += vec3(vel[i][j].x*dt,0.f,vel[i][j].z*dt);
-            //cout<<vel[i][j].x*dt<<' '<<vel[i][j].y*dt<<endl;
-            vel[i][j+1] += -force  * dt;
-            //*(line_pt[i]+j+1) += vel[i][j+1]*dt;
-            *(line_pt[i]+j+1) += vec3(vel[i][j+1].x*dt,0.f,vel[i][j+1].z*dt);
 
-        }
-
-
+    }
 }
