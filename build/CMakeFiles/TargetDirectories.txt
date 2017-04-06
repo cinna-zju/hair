@@ -1,0 +1,3 @@
+/Users/cinna/desktop/hair/build/CMakeFiles/rebuild_cache.dir
+/Users/cinna/desktop/hair/build/CMakeFiles/edit_cache.dir
+/Users/cinna/desktop/hair/build/CMakeFiles/hair.dir

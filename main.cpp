@@ -233,8 +233,8 @@ int createModel()
 void shaderInit()
 {
     SHADER shader;
-    GLuint vs = shader.create( "vert.glsl", GL_VERTEX_SHADER );
-    GLuint fs = shader.create("frag.glsl", GL_FRAGMENT_SHADER );
+    GLuint vs = shader.create( "../vert.glsl", GL_VERTEX_SHADER );
+    GLuint fs = shader.create("../frag.glsl", GL_FRAGMENT_SHADER );
     GLuint program = shader.program(vs, fs);
 
     uniform_M = shader.getLocation(program, "M");
