@@ -7,6 +7,7 @@
 #define max(a,b) a>b?a:b
 
 void update();
+void updateWithPBD();
 
 GLint uniform_M, uniform_V, uniform_P, uniform_mvp;
 
@@ -20,13 +21,13 @@ vec3 up = vec3( .0, 1.0, .0 );
 
 //motion model
 bool isSim = 1;
-float dt = 0.01;
+float dt = 0.3;
 vec3 g = vec3(0.f, -9.8, 0.f);//gravity
 float airFrictionConstant = 0.3;
 
 vec3 vel[3][5];//velocity of control hair
 
-float springLength = 6;
+float springLength = 8;
 float springConstant = 400;
 
 GLFWwindow* window;
@@ -137,7 +138,7 @@ vector<vec3> line[3];//3 control hair
 vec3 *line_pt[3] = {0};//pointer to each vector
 
 //interpolate model
-const int itpnum = 100;//num of itp hairs
+const int itpnum = 50;//num of itp hairs
 GLuint itpid[itpnum];
 vec3 itpv[itpnum][5];
 float a[itpnum], b[itpnum], c[itpnum];//iteerpolate constant
@@ -174,6 +175,11 @@ int createModel()
     tri0n[1] = vec3(0,-1,0);
     tri0n[2] = vec3(0,-1,0);
 
+    for(int i=0;i<3;++i)
+        for(int j=0;j<5;++j){
+            vel[i][j] = vec3(0.f,0.f,0.f);
+        }
+
     glGenBuffers( 1, &vbo[0] );
     glBindBuffer( GL_ARRAY_BUFFER, vbo[0] );
     glBufferData( GL_ARRAY_BUFFER,
@@ -190,9 +196,9 @@ int createModel()
     //calculate 5 points, all along tri0n
     for(float i = 0; i < numPoint; i++){
         srand(i);
-        line[0].push_back( tri0[0] + tri0n[0] * float(8.0) * i );
-        line[1].push_back( tri0[1] + tri0n[1] * float(8.0) * i );
-        line[2].push_back( tri0[2] + tri0n[2] * float(8.0) * i );
+        line[0].push_back( tri0[0] + tri0n[0] * float(8.0) * i +vec3(i,0,0));
+        line[1].push_back( tri0[1] + tri0n[1] * float(8.0) * i +vec3(i,0,0));
+        line[2].push_back( tri0[2] + tri0n[2] * float(8.0) * i +vec3(i,0,0));
 
     }
     //point to the first element of vector
@@ -225,6 +231,30 @@ int createModel()
         c[i] = 1 - a[i] - b[i];
     }
     return 0;
+
+
+
+}
+void countFPS(double &lastTime, int &nbFrames)
+{
+
+    // Measure speed
+    double currentTime = glfwGetTime();
+    nbFrames++;
+    if ( currentTime - lastTime >= 1.0 ){ // If last prinf() was more than 1 sec ago
+        // printf and reset timer
+        //printf("%f ms/frame\n", 1000.0/double(nbFrames));
+        char title[256];
+        snprintf ( title, 255,
+                 "hair - [FPS: %3.2f]",
+                    1000.0f / (double)nbFrames );
+
+        glfwSetWindowTitle (window, title);
+
+        nbFrames = 0;
+        lastTime += 1.0;
+    }
+
 
 
 
@@ -278,9 +308,14 @@ int main()
 
     interpolate();
 
+    double lastTime = glfwGetTime();
+    int nbFrames = 0;
+
     /* Loop until the user closes the window */
     while (!glfwWindowShouldClose(window))
     {
+
+
         /* Render here */
         glClearColor(0.f, 0.f, 0.f, 0.f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -316,7 +351,13 @@ int main()
             glDrawArrays(GL_LINE_STRIP, 0, 50);
         }
 
-        update();
+        //update();
+        updateWithPBD();
+        //sleep 33ms and fps is 33
+        usleep(1000*33);
+        //show ms/frame in title
+        countFPS(lastTime, nbFrames);
+
         /* Swap front and back buffers */
         glfwSwapBuffers(window);
 
@@ -337,8 +378,8 @@ void update()
             for(int j = 0; j < numPoint-1; ++j){
                 //distance r between two points
                 vec3 springVector = line_pt[i][j] - line_pt[i][j+1];
-                float r = springVector.length();
-
+                //float r = springVector.length();//????????????????????????????????
+                float r = length(springVector);
                 vec3 force;
                 if( r != 0 ){
                     force = (springVector / r) * (r - springLength) * springConstant
@@ -358,6 +399,57 @@ void update()
                 //*(line_pt[i]+j+1) += vel[i][j+1]*dt;
                 *(line_pt[i]+j+1) += vec3(vel[i][j+1].x*dt,0.f,vel[i][j+1].z*dt);
 
+            }
+
+    }
+}
+
+const int solverIter = 10;
+void updateWithPBD()
+{
+    vec3 p[3][5];
+    vec3 dp[3][5];
+    if(isSim){
+        for(int i=0;i<3;++i)
+            for(int j=0;j<5;++j){
+                vel[i][j] += g*dt;
+                if(j==0)
+                    p[i][j]=line_pt[i][j];
+                else
+                    p[i][j] = line_pt[i][j] + vel[i][j] * dt;
+            }
+        for(int i=0;i<solverIter;++i){
+            for(int j=0;j<3;++j)
+                for(int k=0;k<4;k++){
+                    vec3 dl = p[j][k]-p[j][k+1];
+                    float constraint = length(dl) - springLength;
+                    //every point has the same mass
+                    dp[j][k] = (p[j][k]-p[j][k+1])
+                                * -0.5
+                                * constraint
+                                / length(p[j][k]-p[j][k+1]);
+
+                    dp[j][k+1] = (p[j][k]-p[j][k+1])
+                                * 0.5
+                                * constraint
+                                / length(p[j][k]-p[j][k+1]);
+
+                    if(k != 0)
+                        p[j][k] += dp[j][k];
+                    p[j][k+1] += dp[j][k+1];
+                }
+            //display length of hair 0
+            
+            cout<<"length:"<<i<<"\t"<<length(p[0][0]-p[0][1])
+                        +length(p[0][1]-p[0][2])
+                        +length(p[0][2]-p[0][3])
+                        +length(p[0][3]-p[0][4])<<endl;
+        }
+
+        for(int i=0;i<3;++i)
+            for(int j=0;j<5;++j){
+                vel[i][j] = (p[i][j] - line_pt[i][j]) / dt;
+                line_pt[i][j] = p[i][j];
             }
 
     }
